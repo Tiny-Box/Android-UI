@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <declare-styleable name="RippleView">
+        <attr name="rd_style" />
+        <attr name="rd_enable" />
+    </declare-styleable>
+
+    <declare-styleable name="RippleDrawable">
+
+    </declare-styleable>
+
+
+</resources>
+
