@@ -1,5 +1,7 @@
 package tinybox.lib.drawable;
 
+import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -8,10 +10,18 @@ import android.graphics.PointF;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
+import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.animation.Interpolator;
+
+import tinybox.lib.R;
+import tinybox.lib.util.ColorUtil;
+import tinybox.lib.util.ThemeUtil;
 
 /**
  * Created on 2015/5/22.
@@ -51,9 +61,18 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
     private Interpolator mInInterpolator;
     private Interpolator mOutInterpolator;
 
+    // this is the delay flag
+    public static final int DELAY_CLICK_NONE = 0;
+    public static final int DELAY_CLICK_UNTIL_RELEASE = 1;
+    public static final int DELAY_CLICK_AFTER_RELEASE = 2;
+
     private static final int TYPE_TOUCH_MATCH_VIEW = -1;
     private static final int TYPE_TOUCH = 0;
     private static final int TYPE_WAVE = 1;
+
+    // which control the rate of gradient stop and radius
+    private static final float[] GRADIENT_STOPS = new float[]{0f, 0.99f, 1f};
+    private static final float GRADIENT_RADIUS = 16;
 
 
 
@@ -100,6 +119,16 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         mMatrix = new Matrix();
 
         //mInShader = new RadialGradient()
+        // RadialGradient(x, y, radius, colors, positions, Shader.TileMode.CLAMP)
+        // x, y: the coordinate of the center of the radius.
+        // radius: the radius of the gradient
+        // colors: the colors to be distributed between the center and edge of the circle
+        // positions: the relative position of each corresponding color in the colors array. If this is NULL, the the colors are distributed evenly between the center and edge of the circle
+        // Shader.TileMode.CLAMP: replicate the edge color if the shader draws outside of its original bounds, which can create wave effects
+        mInShader = new RadialGradient(0, 0, GRADIENT_RADIUS, new int[]{mRippleColor, mRippleColor, 0}, GRADIENT_STOPS, Shader.TileMode.CLAMP);
+        // mOutShader is the RadialGradient which has wave effects.
+        if (mRippleTyple == TYPE_WAVE)
+            mOutShader = new RadialGradient(0, 0, GRADIENT_RADIUS, new int[]{0, ColorUtil.getColor(mRippleColor, 0f), mRippleColor}, GRADIENT_STOPS, Shader.TileMode.CLAMP);
 
     }
 
@@ -155,6 +184,87 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
             this.right = right;
             this.top = top;
             this.bottom = bottom;
+        }
+    }
+
+    public static class Builder {
+        private Drawable mBackgroundDrawable;
+        private int mBackgroundAnimDuration = 200;
+        private int mBackgroundColor;
+
+        private int mRippleType;
+        private int mMaxRippleRadius;
+        private int mRippleAnimDuration = 400;
+        private int mRippleColor;
+        private int mDelayClickType;
+
+
+        public Builder(){}
+
+        public Builder (Context context, int defStyleRes) {
+            this(context, null, 0, defStyleRes);
+        }
+
+        public Builder (Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+            TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.RippleDrawable, defStyleAttr, defStyleRes);
+            int type, resId;
+
+            // rd_backgroundColor is in the attrs.xml
+            backgroundColor(a.getColor(R.styleable.RippleDrawable_rd_backgroundColor, 0));
+
+            // getInteger is a funny method: getInteger(int index, int defValue)
+            //      index: index of attribute at index
+            //      defValue: Value to return if the attribute is not defined or not a resource.
+            // This method use to retrieve the integer value for the attribute at index. this design, ennnn, is funny. :)
+
+            // R.integer.config_mediumAnimTime: The duration (in milliseconds) of a medium-length animation.
+            // This is a static value
+            backgroundAnimDuration(a.getInteger(R.styleable.RippleDrawable_rd_backgroundAnimDuration, context.getResources().getInteger(android.R.integer.config_mediumAnimTime)));
+            rippleType(a.getInteger(R.styleable.RippleDrawable_rd_rippleType, RippleDrawable.TYPE_TOUCH));
+            delayClickType(a.getInteger(R.styleable.RippleDrawable_rd_delayClick, RippleDrawable.DELAY_CLICK_NONE));
+
+            type = ThemeUtil.getType(a, R.styleable.RippleDrawable_rd_maxRippleRadius);
+            if (type >= TypedValue.TYPE_FIRST_INT && type <= TypedValue.TYPE_LAST_INT)
+                maxRippleRadius(a.getInteger(R.styleable.RippleDrawable_rd_maxRippleRadius, -1));
+            else
+                maxRippleRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_maxRippleRadius, ThemeUtil.dpToPx(context, 48)));
+
+            // don't know
+            rippleColor(a.getColor(R.styleable.RippleDrawable_rd_rippleColor, ThemeUtil.colorControlHighlight(context, 0)));
+            
+
+
+
+        }
+
+        public Builder backgroundColor (int color) {
+            mBackgroundColor = color;
+            return this;
+        }
+
+        public Builder backgroundAnimDuration (int duration) {
+            mBackgroundAnimDuration = duration;
+            return this;
+        }
+
+        public Builder rippleType (int type) {
+            mRippleType = type;
+            return this;
+        }
+
+        public Builder delayClickType (int type) {
+            mDelayClickType = type;
+            return this;
+        }
+
+        public Builder maxRippleRadius (int radius) {
+            mMaxRippleRadius = radius;
+            return this;
+        }
+
+        public Builder rippleColor (int color) {
+            mRippleColor = color;
+            return this;
         }
     }
 }
