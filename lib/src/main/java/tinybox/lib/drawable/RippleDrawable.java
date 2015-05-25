@@ -17,6 +17,9 @@ import android.os.Build;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.AnimationUtils;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 
 import tinybox.lib.R;
@@ -27,6 +30,9 @@ import tinybox.lib.util.ThemeUtil;
  * Created on 2015/5/22.
  */
 public class RippleDrawable extends Drawable implements Animatable, View.OnTouchListener {
+
+    // isRunning flag
+    private boolean mRunning = false;
 
     // Mask
     private Paint mShadePaint;
@@ -151,6 +157,34 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         mMask = new Mask(type, topLeftCornerRadius, topRightCornerRadius, bottomRightCornerRadius, bottomLeftCornerRadius, left, top, right, bottom);
     }
 
+    @Override
+    public void stop() {
+        if (!isRunning())
+            return;
+
+        mRunning = false;
+
+    }
+
+    @Override
+    public boolean isRunning() {
+        return mRunning;
+    }
+
+    //
+    private final Runnable mUpdate = new Runnable() {
+        @Override
+        public void run() {
+            switch (mRippleTyple) {
+                case TYPE_TOUCH:
+                case TYPE_TOUCH_MATCH_VIEW:
+                    break;
+                case TYPE_WAVE:
+                    break;
+            }
+        }
+    }
+
     public static class Mask {
 
         public static final int TYPE_RECTANGLE = 0;
@@ -198,6 +232,19 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         private int mRippleColor;
         private int mDelayClickType;
 
+        private Interpolator mInInterpolator;
+        private Interpolator mOutInterpolator;
+
+        private int mMaskType;
+        private int mMaskTopLeftCornerRadius;
+        private int mMaskTopRightCornerRadius;
+        private int mMaskBottomLeftCornerRadius;
+        private int mMaskBottomRightCornerRadius;
+        private int mMaskLeft;
+        private int mMaskTop;
+        private int mMaskRight;
+        private int mMaskBottom;
+
 
         public Builder(){}
 
@@ -231,10 +278,45 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
 
             // don't know
             rippleColor(a.getColor(R.styleable.RippleDrawable_rd_rippleColor, ThemeUtil.colorControlHighlight(context, 0)));
-            
+            rippleAnimDuration(a.getInteger(R.styleable.RippleDrawable_rd_rippleAnimDuration, context.getResources().getInteger(android.R.integer.config_mediumAnimTime)));
+
+            // getResourceId is similar with getInteger
+            if((resId = a.getResourceId(R.styleable.RippleDrawable_rd_inInterpolator, 0)) != 0)
+                inInterpolator(AnimationUtils.loadInterpolator(context, resId));
+            if((resId = a.getResourceId(R.styleable.RippleDrawable_rd_outInterpolator, 0)) != 0)
+                outInterpolator(AnimationUtils.loadInterpolator(context, resId));
+
+            // TYPE_RECTANGLE is a flag
+            maskType(a.getInteger(R.styleable.RippleDrawable_rd_maskType, Mask.TYPE_RECTANGLE));
+            // set radius
+            // although I don't know why he must set top and bottom respectively
+            cornerRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_cornerRadius, 0));
+            topLeftCornerRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_topLeftCornerRadius, mMaskTopLeftCornerRadius));
+            topRightCornerRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_topRightCornerRadius, mMaskTopRightCornerRadius));
+            bottomRightCornerRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_bottomRightCornerRadius, mMaskBottomRightCornerRadius));
+            bottomLeftCornerRadius(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_bottomLeftCornerRadius, mMaskBottomLeftCornerRadius));
+
+            // It's similar with radius
+            padding(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_padding, 0));
+            left(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_leftPadding, mMaskLeft));
+            right(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_rightPadding, mMaskRight));
+            top(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_topPadding, mMaskTop));
+            bottom(a.getDimensionPixelSize(R.styleable.RippleDrawable_rd_bottomPadding, mMaskBottom));
+
+            a.recycle();
 
 
+        }
 
+        // build basic
+        public RippleDrawable build(){
+            if(mInInterpolator == null)
+                mInInterpolator = new AccelerateInterpolator();
+
+            if(mOutInterpolator == null)
+                mOutInterpolator = new DecelerateInterpolator();
+
+            return new RippleDrawable(mBackgroundDrawable, mBackgroundAnimDuration, mBackgroundColor, mRippleType, mDelayClickType, mMaxRippleRadius, mRippleAnimDuration, mRippleColor, mInInterpolator, mOutInterpolator, mMaskType, mMaskTopLeftCornerRadius, mMaskTopRightCornerRadius, mMaskBottomRightCornerRadius, mMaskBottomLeftCornerRadius, mMaskLeft, mMaskTop, mMaskRight, mMaskBottom);
         }
 
         public Builder backgroundColor (int color) {
@@ -264,6 +346,82 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
 
         public Builder rippleColor (int color) {
             mRippleColor = color;
+            return this;
+        }
+
+        public Builder rippleAnimDuration (int duration) {
+            mRippleAnimDuration = duration;
+            return this;
+        }
+
+        public Builder inInterpolator (Interpolator interpolator) {
+            mInInterpolator = interpolator;
+            return this;
+        }
+
+        public Builder outInterpolator (Interpolator interpolator) {
+            mOutInterpolator = interpolator;
+            return this;
+        }
+
+        public Builder maskType (int type) {
+            mMaskType = type;
+            return this;
+        }
+
+        public Builder cornerRadius (int radius) {
+            mMaskBottomLeftCornerRadius = radius;
+            mMaskBottomRightCornerRadius = radius;
+            mMaskTopLeftCornerRadius = radius;
+            mMaskTopRightCornerRadius = radius;
+            return this;
+        }
+
+        public Builder topLeftCornerRadius(int radius){
+            mMaskTopLeftCornerRadius = radius;
+            return this;
+        }
+
+        public Builder topRightCornerRadius(int radius){
+            mMaskTopRightCornerRadius = radius;
+            return this;
+        }
+
+        public Builder bottomLeftCornerRadius(int radius){
+            mMaskBottomLeftCornerRadius = radius;
+            return this;
+        }
+
+        public Builder bottomRightCornerRadius(int radius){
+            mMaskBottomRightCornerRadius = radius;
+            return this;
+        }
+
+        public Builder padding(int padding){
+            mMaskLeft = padding;
+            mMaskTop = padding;
+            mMaskRight = padding;
+            mMaskBottom = padding;
+            return this;
+        }
+
+        public Builder left(int padding){
+            mMaskLeft = padding;
+            return this;
+        }
+
+        public Builder top(int padding){
+            mMaskTop = padding;
+            return this;
+        }
+
+        public Builder right(int padding){
+            mMaskRight = padding;
+            return this;
+        }
+
+        public Builder bottom(int padding){
+            mMaskBottom = padding;
             return this;
         }
     }
