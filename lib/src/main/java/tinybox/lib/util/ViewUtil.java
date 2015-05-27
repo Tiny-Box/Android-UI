@@ -9,6 +9,8 @@ import android.view.View;
  */
 public class ViewUtil {
 
+    public static final long FRAME_DURATION = 1000 / 60;
+
     public static void setBackgroud(View view, Drawable drawable) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN)
             view.setBackground(drawable);

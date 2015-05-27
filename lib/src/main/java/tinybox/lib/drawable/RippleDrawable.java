@@ -2,6 +2,7 @@ package tinybox.lib.drawable;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -14,6 +15,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
@@ -25,6 +27,7 @@ import android.view.animation.Interpolator;
 import tinybox.lib.R;
 import tinybox.lib.util.ColorUtil;
 import tinybox.lib.util.ThemeUtil;
+import tinybox.lib.util.ViewUtil;
 
 /**
  * Created on 2015/5/22.
@@ -53,11 +56,13 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
 
     // Ripple
     private PointF mRipplePoint;
+    private float mRippleRadius;
     private int mRippleTyple;
     private int mMaxRippleRadius;
     private int mRippleAnimDuration;
     private int mRippleColor;
     private int mDelayClickType;
+    private float mRippleAlphaPercent;
 
 
 
@@ -67,6 +72,11 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
     private Interpolator mInInterpolator;
     private Interpolator mOutInterpolator;
 
+    private long mStartTime;
+
+    // controls flag
+    private int mState = STATE_OUT;
+
     // this is the delay flag
     public static final int DELAY_CLICK_NONE = 0;
     public static final int DELAY_CLICK_UNTIL_RELEASE = 1;
@@ -75,6 +85,13 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
     private static final int TYPE_TOUCH_MATCH_VIEW = -1;
     private static final int TYPE_TOUCH = 0;
     private static final int TYPE_WAVE = 1;
+
+    // motion flag
+    private static final int STATE_OUT = 0;
+    private static final int STATE_PRESS = 1;
+    private static final int STATE_HOVER = 2;
+    private static final int STATE_RELEASE_ON_HOLD = 3;
+    private static final int STATE_RELEASE = 4;
 
     // which control the rate of gradient stop and radius
     private static final float[] GRADIENT_STOPS = new float[]{0f, 0.99f, 1f};
@@ -157,6 +174,41 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         mMask = new Mask(type, topLeftCornerRadius, topRightCornerRadius, bottomRightCornerRadius, bottomLeftCornerRadius, left, top, right, bottom);
     }
 
+    // this method will create the RippleEffect
+    private boolean setRippleEffect(float x, float y, float radius){
+        if(mRipplePoint.x != x || mRipplePoint.y != y || mRippleRadius != radius){
+            mRipplePoint.set(x, y);
+            mRippleRadius = radius;
+            radius = mRippleRadius / GRADIENT_RADIUS;
+            mMatrix.reset();
+            mMatrix.postTranslate(x, y);
+            mMatrix.postScale(radius, radius, x, y);
+            mInShader.setLocalMatrix(mMatrix);
+            if(mOutShader != null)
+                mOutShader.setLocalMatrix(mMatrix);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // thie method will set the Ripple state
+    private void setRippleState(int state){
+        if(mState != state){
+            mState = state;
+
+            if(mState != STATE_OUT){
+                if(mState != STATE_HOVER)
+                    start();
+                else
+                    stop();
+            }
+            else
+                stop();
+        }
+    }
+
     @Override
     public void stop() {
         if (!isRunning())
@@ -171,18 +223,62 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         return mRunning;
     }
 
-    //
-    private final Runnable mUpdate = new Runnable() {
+    // Represents a command that can be executed, one kind of handle
+    private final Runnable mUpdater = new Runnable() {
         @Override
         public void run() {
             switch (mRippleTyple) {
                 case TYPE_TOUCH:
                 case TYPE_TOUCH_MATCH_VIEW:
+                    updateTouch();
                     break;
                 case TYPE_WAVE:
                     break;
             }
         }
+    };
+
+    private void updateTouch() {
+        if (mState != STATE_RELEASE) {
+            // SystemClock.uptimeMillis(): Returns milliseconds since boot, not counting time spent in deep sleep.
+            float backgroundProgress = Math.min(1f, (float)(SystemClock.uptimeMillis() - mStartTime) / mBackgroundAnimDuration);
+            // interpolator is a speed control.
+            mBackgroundAlphaPercent = mInInterpolator.getInterpolation(backgroundProgress) * Color.alpha(mBackgroundColor) * 255;
+
+            // it's same as above
+            float touchProgress = Math.min(1f, (float)(SystemClock.uptimeMillis() - mStartTime) / mRippleAnimDuration);
+            mRippleAlphaPercent = mInInterpolator.getInterpolation(touchProgress);
+
+            // then set the effect
+            setRippleEffect(mRipplePoint.x, mRipplePoint.y, mMaxRippleRadius * mInInterpolator.getInterpolation(touchProgress));
+
+            // above is the judge about whether we press the button
+            // If we click on the button, the mStartTime will change, so Math.min() will return 1f
+            // then the follow code will run
+            if (backgroundProgress == 1f && touchProgress == 1f){
+                mStartTime = SystemClock.uptimeMillis();
+                setRippleState(mState == STATE_PRESS ? STATE_HOVER : STATE_RELEASE);
+            }
+        }
+        else {
+            float backgroundProgress = Math.min(1f, (float)(SystemClock.uptimeMillis() - mStartTime) / mBackgroundAnimDuration);
+            mBackgroundAlphaPercent = (1f - mOutInterpolator.getInterpolation(backgroundProgress)) * Color.alpha(mBackgroundColor) / 255f;
+
+            float touchProgress = Math.min(1f, (float)(SystemClock.uptimeMillis() - mStartTime) / mRippleAnimDuration);
+            mRippleAlphaPercent = 1f - mOutInterpolator.getInterpolation(touchProgress);
+
+            // set the ripple
+            // not understand clear
+            setRippleEffect(mRipplePoint.x, mRipplePoint.y, mMaxRippleRadius * (1f + 0.5f * mOutInterpolator.getInterpolation(touchProgress)));
+
+            if(backgroundProgress == 1f && touchProgress == 1f)
+                setRippleState(STATE_OUT);
+        }
+
+        if(isRunning())
+            scheduleSelf(mUpdater, SystemClock.uptimeMillis() + ViewUtil.FRAME_DURATION);
+
+        invalidateSelf();
     }
 
     public static class Mask {
