@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.TypedValue;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.AnimationUtils;
@@ -45,6 +46,7 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
     // RadiaGradient: Create a shader that draws a radical gradient
     private RadialGradient mInShader;
     private RadialGradient mOutShader;
+    private int mAlpha = 255;
 
     // background
     private Drawable mBackgroundDrawable;
@@ -57,7 +59,7 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
     // Ripple
     private PointF mRipplePoint;
     private float mRippleRadius;
-    private int mRippleTyple;
+    private int mRippleType;
     private int mMaxRippleRadius;
     private int mRippleAnimDuration;
     private int mRippleColor;
@@ -105,15 +107,15 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         mBackgroundAnimDuration = backgroundAnimDuration;
         mBackgroundColor = backgroundColor;
 
-        mRippleTyple = rippleType;
+        mRippleType = rippleType;
         setDelayClickType(delayClickType);
         mMaxRippleRadius = maxRippleRadius;
         mRippleAnimDuration = rippleAnimDuration;
         mRippleColor = rippleColor;
 
         // when radius is error
-        if (mRippleTyple == TYPE_TOUCH && mMaxRippleRadius <= 0)
-            mRippleTyple = TYPE_TOUCH_MATCH_VIEW;
+        if (mRippleType == TYPE_TOUCH && mMaxRippleRadius <= 0)
+            mRippleType = TYPE_TOUCH_MATCH_VIEW;
 
         // set interpolator of in and out
         mInInterpolator = inInterpolator;
@@ -150,7 +152,7 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         // Shader.TileMode.CLAMP: replicate the edge color if the shader draws outside of its original bounds, which can create wave effects
         mInShader = new RadialGradient(0, 0, GRADIENT_RADIUS, new int[]{mRippleColor, mRippleColor, 0}, GRADIENT_STOPS, Shader.TileMode.CLAMP);
         // mOutShader is the RadialGradient which has wave effects.
-        if (mRippleTyple == TYPE_WAVE)
+        if (mRippleType == TYPE_WAVE)
             mOutShader = new RadialGradient(0, 0, GRADIENT_RADIUS, new int[]{0, ColorUtil.getColor(mRippleColor, 0f), mRippleColor}, GRADIENT_STOPS, Shader.TileMode.CLAMP);
 
     }
@@ -162,6 +164,11 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
             // getBounds: Return the drawable's bounds Rect.
             mBackgroundDrawable.setBounds(getBounds());
         }
+    }
+
+    @Override
+    public void setAlpha(int alpha) {
+        mAlpha = alpha;
     }
 
     public int getDelayClickType() { return mDelayClickType; }
@@ -181,8 +188,11 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
             mRippleRadius = radius;
             radius = mRippleRadius / GRADIENT_RADIUS;
             mMatrix.reset();
+            // Postconcats the matrix with the specified translation. M`=T(x, y)*M
             mMatrix.postTranslate(x, y);
+            // Postconcats the matrix with the specified scale. M`=S(sx, sy, x, y)*M
             mMatrix.postScale(radius, radius, x, y);
+            // set the shader's local matrix
             mInShader.setLocalMatrix(mMatrix);
             if(mOutShader != null)
                 mOutShader.setLocalMatrix(mMatrix);
@@ -209,6 +219,42 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         }
     }
 
+    private int getMaxRippleRaidus(float x, float y) {
+        float x1 = x < mBackgroundBounds.centerX() ? mBackgroundBounds.right : mBackgroundBounds.left;
+    }
+
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_MOVE:
+                if (mState == STATE_OUT || mState == STATE_RELEASE) {
+                    if (mRippleType == TYPE_WAVE || mRippleType == TYPE_TOUCH_MATCH_VIEW)
+                        mMaxRippleRadius;
+                }
+        }
+        return true;
+    }
+
+    public void cancel() {
+        setRippleState(STATE_OUT);
+    }
+
+    private void resetAnimation() {
+        mStartTime = SystemClock.uptimeMillis();
+    }
+
+    @Override
+    public void start() {
+        if (isRunning())
+            return;
+
+        resetAnimation();
+
+        scheduleSelf(mUpdater, SystemClock.uptimeMillis() + ViewUtil.FRAME_DURATION);
+        invalidateSelf();
+    }
+
     @Override
     public void stop() {
         if (!isRunning())
@@ -223,16 +269,23 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         return mRunning;
     }
 
+    @Override
+    public void scheduleSelf(Runnable what, long when) {
+        mRunning = true;
+        super.scheduleSelf(what, when);
+    }
+
     // Represents a command that can be executed, one kind of handle
     private final Runnable mUpdater = new Runnable() {
         @Override
         public void run() {
-            switch (mRippleTyple) {
+            switch (mRippleType) {
                 case TYPE_TOUCH:
                 case TYPE_TOUCH_MATCH_VIEW:
                     updateTouch();
                     break;
                 case TYPE_WAVE:
+                    updateWave();
                     break;
             }
         }
@@ -275,9 +328,44 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
                 setRippleState(STATE_OUT);
         }
 
-        if(isRunning())
+        if(isRunning()){
+            // scheduleSelf: use the current Drawable.Callback implementation to have this Drawable.
+            // scheduleSelf(what, when)
             scheduleSelf(mUpdater, SystemClock.uptimeMillis() + ViewUtil.FRAME_DURATION);
+        }
 
+        // use the current Drawable.Callback implementation to redrawn.
+        invalidateSelf();
+    }
+
+    private void updateWave() {
+        float progress = Math.min(1f, (float)(SystemClock.uptimeMillis() - mStartTime)/ mRippleAnimDuration);
+
+        if (mState != STATE_RELEASE) {
+            setRippleEffect(mRipplePoint.x, mRipplePoint.y, mMaxRippleRadius * mInInterpolator.getInterpolation(progress));
+
+            if (progress == 1f) {
+                mStartTime = SystemClock.uptimeMillis();
+                if (mState == STATE_PRESS)
+                    setRippleState(STATE_HOVER);
+                else {
+                    setRippleEffect(mRipplePoint.x, mRipplePoint.y, 0);
+                    setRippleState(STATE_RELEASE);
+                }
+            }
+        }
+        else {
+            setRippleEffect(mRipplePoint.x, mRipplePoint.y, mMaxRippleRadius * mInInterpolator.getInterpolation(progress));
+
+            if (progress == 1f) {
+                // state is release, and progress is long time. so we can judge the user have pressed the button.
+                setRippleState(STATE_OUT);
+            }
+        }
+
+        if (isRunning()) {
+            scheduleSelf(mUpdater, SystemClock.uptimeMillis() + ViewUtil.FRAME_DURATION);
+        }
         invalidateSelf();
     }
 
