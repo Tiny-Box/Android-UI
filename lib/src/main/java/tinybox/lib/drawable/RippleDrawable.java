@@ -230,8 +230,16 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
             case MotionEvent.ACTION_MOVE:
                 if (mState == STATE_OUT || mState == STATE_RELEASE) {
                     if (mRippleType == TYPE_WAVE || mRippleType == TYPE_TOUCH_MATCH_VIEW)
-                        mMaxRippleRadius;
+                        mMaxRippleRadius = getMaxRippleRaidus(event.getX(), event.getY());
+
+                    setRippleEffect(event.getX(), event.getY(), 0);
+                    setRippleState(STATE_PRESS);
                 }
+                else if (mRippleType == TYPE_TOUCH) {
+                    if (setRippleEffect(event.getX(), event.getY(), mRippleRadius))
+                        invalidateSelf();
+                }
+                break;
         }
         return true;
     }
