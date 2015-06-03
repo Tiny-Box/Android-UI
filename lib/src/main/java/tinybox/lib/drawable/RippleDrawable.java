@@ -268,6 +268,7 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         if (!isRunning())
             return;
 
+        
         mRunning = false;
 
     }
