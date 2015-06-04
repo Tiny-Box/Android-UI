@@ -2,10 +2,13 @@ package tinybox.lib.drawable;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PointF;
 import android.graphics.RadialGradient;
@@ -90,7 +93,9 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
 
     // motion flag
     private static final int STATE_OUT = 0;
+    // whether pressed, such as touching or clicking on a button
     private static final int STATE_PRESS = 1;
+    // whether cursor is hovering
     private static final int STATE_HOVER = 2;
     private static final int STATE_RELEASE_ON_HOLD = 3;
     private static final int STATE_RELEASE = 4;
@@ -171,11 +176,61 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         mAlpha = alpha;
     }
 
-    public int getDelayClickType() { return mDelayClickType; }
+    @Override
+    public void setColorFilter(ColorFilter colorFilter) {
+        mFillPaint.setColorFilter(colorFilter);
+        mShadePaint.setColorFilter(colorFilter);
+    }
+
+    @Override
+    public int getOpacity() {
+        return PixelFormat.TRANSLUCENT;
+    }
 
     public void setDelayClickType(int type) {
         mDelayClickType = type;
     }
+
+    public int getDelayClickType() { return mDelayClickType; }
+
+    public long getDelayClickTime() {
+        switch (mDelayClickType) {
+            case DELAY_CLICK_NONE:
+                return -1;
+            case DELAY_CLICK_UNTIL_RELEASE:
+                if (mState == STATE_RELEASE_ON_HOLD)
+                    return Math.max(mBackgroundAnimDuration, mRippleAnimDuration) - (SystemClock.uptimeMillis() - mStartTime);
+                break;
+            case DELAY_CLICK_AFTER_RELEASE:
+                if (mState == STATE_RELEASE_ON_HOLD)
+                    return 2 * Math.max(mBackgroundAnimDuration, mRippleAnimDuration) - (SystemClock.uptimeMillis() - mStartTime);
+                else if (mState == STATE_RELEASE)
+                    return Math.max(mBackgroundAnimDuration, mRippleAnimDuration) - (SystemClock.uptimeMillis() - mStartTime);
+                break;
+        }
+        return -1;
+    }
+
+    @Override
+    protected void onBoundsChange(Rect bounds) {
+        if (mBackgroundDrawable != null)
+            mBackgroundDrawable.setBounds(bounds);
+
+        mBackgroundBounds.set(bounds.left + mMask.left, bounds.top + mMask.top, bounds.right - mMask.right, bounds.bottom - mMask.bottom);
+        mBackground.reset();
+
+        switch (mMask.type) {
+            case Mask.TYPE_OVAL:
+                // addOval: Add a closed oval contour to the path
+                mBackground.addOval(mBackgroundBounds, Path.Direction.CW);
+                break;
+            case Mask.TYPE_RECTANGLE:
+                // addRoundRect: Add a closed round-rectangle contour to the path
+                mBackground.addRoundRect(mBackgroundBounds, mMask.cornerRadius, Path.Direction.CW);
+                break;
+        }
+    }
+
 
     public void setMask(int type, int topLeftCornerRadius, int topRightCornerRadius, int bottomRightCornerRadius, int bottomLeftCornerRadius, int left, int top, int right, int bottom){
         mMask = new Mask(type, topLeftCornerRadius, topRightCornerRadius, bottomRightCornerRadius, bottomLeftCornerRadius, left, top, right, bottom);
@@ -203,6 +258,67 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         return false;
     }
 
+    @Override
+    public boolean isStateful() {
+        return mBackgroundDrawable != null && mBackgroundDrawable.isStateful();
+    }
+
+    @Override
+    protected boolean onStateChange (int[] state) {
+        return mBackgroundDrawable != null && mBackgroundDrawable.setState(state);
+    }
+
+    @Override
+    public void draw(Canvas canvas) {
+        if (mBackgroundDrawable != null)
+            mBackgroundDrawable.draw(canvas);
+
+        switch (mRippleType) {
+            case TYPE_TOUCH:
+            case TYPE_TOUCH_MATCH_VIEW:
+                drawTouch(canvas);
+                break;
+            case TYPE_WAVE:
+                drawWave(canvas);
+                break;
+        }
+    }
+
+    private void drawTouch(Canvas canvas) {
+        if (mState != STATE_OUT) {
+            if (mBackgroundAlphaPercent > 0) {
+                mFillPaint.setColor(mBackgroundColor);
+                mFillPaint.setAlpha(Math.round(mAlpha * mBackgroundAlphaPercent));
+                canvas.drawPath(mBackground, mFillPaint);
+            }
+
+            if (mRippleRadius > 0 && mRippleAlphaPercent > 0) {
+                mShadePaint.setAlpha(Math.round(mAlpha * mRippleAlphaPercent));
+                mShadePaint.setShader(mInShader);
+                canvas.drawPath(mBackground, mShadePaint);
+            }
+        }
+    }
+
+    private void drawWave(Canvas canvas) {
+        if (mState != STATE_OUT) {
+            if (mState == STATE_RELEASE) {
+                if (mRippleRadius == 0) {
+                    mFillPaint.setColor(mRippleColor);
+                    canvas.drawPath(mBackground, mFillPaint);
+                }
+                else {
+                    mShadePaint.setShader(mOutShader);
+                    canvas.drawPath(mBackground, mShadePaint);
+                }
+            }
+            else if (mRippleRadius > 0) {
+                mShadePaint.setShader(mInShader);
+                canvas.drawPath(mBackground, mShadePaint);
+            }
+        }
+    }
+
     // thie method will set the Ripple state
     private void setRippleState(int state){
         if(mState != state){
@@ -221,6 +337,9 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
 
     private int getMaxRippleRaidus(float x, float y) {
         float x1 = x < mBackgroundBounds.centerX() ? mBackgroundBounds.right : mBackgroundBounds.left;
+        float y1 = y < mBackgroundBounds.centerY() ? mBackgroundBounds.bottom : mBackgroundBounds.top;
+
+        return (int)Math.round(Math.sqrt(Math.pow(x1- x, 2) + Math.pow(y1 - y, 2)));
     }
 
     @Override
@@ -240,10 +359,25 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
                         invalidateSelf();
                 }
                 break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (mState != STATE_OUT) {
+                    if (mState == STATE_HOVER){
+                        if (mRippleType == TYPE_WAVE || mRippleType == TYPE_TOUCH_MATCH_VIEW) {
+                            setRippleEffect(mRipplePoint.x, mRipplePoint.y, 0);
+                        }
+                        setRippleState(STATE_RELEASE);
+                    }
+                    else
+                        setRippleState(STATE_RELEASE_ON_HOLD);
+                }
+                break;
         }
         return true;
     }
 
+
+    // follow is animation
     public void cancel() {
         setRippleState(STATE_OUT);
     }
@@ -268,7 +402,7 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
         if (!isRunning())
             return;
 
-        
+
         mRunning = false;
 
     }
