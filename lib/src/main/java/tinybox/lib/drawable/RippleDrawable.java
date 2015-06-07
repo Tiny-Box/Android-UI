@@ -646,6 +646,11 @@ public class RippleDrawable extends Drawable implements Animatable, View.OnTouch
             return new RippleDrawable(mBackgroundDrawable, mBackgroundAnimDuration, mBackgroundColor, mRippleType, mDelayClickType, mMaxRippleRadius, mRippleAnimDuration, mRippleColor, mInInterpolator, mOutInterpolator, mMaskType, mMaskTopLeftCornerRadius, mMaskTopRightCornerRadius, mMaskBottomRightCornerRadius, mMaskBottomLeftCornerRadius, mMaskLeft, mMaskTop, mMaskRight, mMaskBottom);
         }
 
+        public Builder backgroundDrawalbe(Drawable drawable) {
+            mBackgroundDrawable = drawable;
+            return this;
+        }
+
         public Builder backgroundColor (int color) {
             mBackgroundColor = color;
             return this;

@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 
 import tinybox.lib.R;
 import tinybox.lib.drawable.RippleDrawable;
@@ -81,7 +82,17 @@ public final class RippleManager implements View.OnClickListener, Runnable {
     public static void cancelRipple(View view) {
         Drawable background = view.getBackground();
 
-        if (background instanceof )
+        if (background instanceof RippleDrawable)
+            ((RippleDrawable)background).cancel();
+//        else if (background instanceof ToolbarRippleDrawable)
+//            ((ToolbarRippleDrawable)background).cancel();
+
+        if (view instanceof ViewGroup){
+            ViewGroup vg = (ViewGroup)view;
+            for (int i = 0, count = vg.getChildCount(); i < count; i++)
+                RippleManager.cancelRipple(vg.getChildAt(i));
+        }
+
     }
 
 }
